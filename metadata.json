@@ -1,0 +1,6 @@
+{
+  "name": "Google Forms Manager",
+  "description": "Ứng dụng quản lý Google Forms trong thư mục Google Drive, tự động đồng bộ phản hồi về trang tính liên kết, gửi thông báo thời gian thực, cung cấp bảng điều khiển trực quan và cho phép xóa phản hồi triệt để.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
