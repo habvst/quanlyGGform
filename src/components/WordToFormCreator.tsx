@@ -659,80 +659,89 @@ export default function WordToFormCreator({
       correctAnswer: isQuizMode ? q.correctAnswer : undefined
     }));
 
+    let appsScriptSuccessful = false;
+
     try {
       // 1. Check if Apps Script is configured and should be used
       if (useAppsScript && globalAppsScriptUrl) {
-        const res = await fetch(globalAppsScriptUrl, {
-          method: 'POST',
-          mode: 'cors',
-          headers: {
-            'Content-Type': 'text/plain', // CORS bypass fallback
-          },
-          body: JSON.stringify({
-            action: 'create_linked_docx_form',
-            folderId: folderId,
-            title: parsedTitle,
-            description: parsedDesc,
-            questions: finalSubmissionQuestions,
-            sheetId: sheetConnectionMode === 'link_existing' ? selectedSheetId : undefined
-          })
-        });
-
-        if (!res.ok) {
-          throw new Error(`Apps Script returned error code: ${res.status}`);
-        }
-
-        const data = await res.json();
-        if (data.status === 'success') {
-          setCreationResult({
-            formId: data.formId,
-            sheetId: data.sheetId,
-            formEditUrl: `https://docs.google.com/forms/d/${data.formId}/edit`,
-            formResponseUrl: data.responderUri || `https://docs.google.com/forms/d/${data.formId}/viewform`,
-            sheetUrl: data.sheetId ? `https://docs.google.com/spreadsheets/d/${data.sheetId}/edit` : undefined
+        try {
+          const res = await fetch(globalAppsScriptUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'text/plain', // CORS bypass fallback
+            },
+            body: JSON.stringify({
+              action: 'create_linked_docx_form',
+              folderId: folderId,
+              title: parsedTitle,
+              description: parsedDesc,
+              questions: finalSubmissionQuestions,
+              sheetId: sheetConnectionMode === 'link_existing' ? selectedSheetId : undefined
+            })
           });
-          return;
-        } else {
-          throw new Error(data.error || 'Lỗi Apps Script cục bộ');
+
+          if (!res.ok) {
+            throw new Error(`Apps Script returned error code: ${res.status}`);
+          }
+
+          const data = await res.json();
+          if (data.status === 'success') {
+            setCreationResult({
+              formId: data.formId,
+              sheetId: data.sheetId,
+              formEditUrl: `https://docs.google.com/forms/d/${data.formId}/edit`,
+              formResponseUrl: data.responderUri || `https://docs.google.com/forms/d/${data.formId}/viewform`,
+              sheetUrl: data.sheetId ? `https://docs.google.com/spreadsheets/d/${data.sheetId}/edit` : undefined
+            });
+            appsScriptSuccessful = true;
+          } else {
+            throw new Error(data.error || 'Lỗi Apps Script cục bộ');
+          }
+        } catch (scriptErr: any) {
+          console.warn("Apps Script Error, falling back to direct REST option:", scriptErr);
+          alert(`Không thể kết nối hoặc thực thi Apps Script (Lỗi: ${scriptErr.message || scriptErr}).\nHệ thống sẽ tự động chuyển sang phương thức dự phòng qua Google REST API trực tiếp.`);
         }
       }
 
-      // 2. FALLBACK FLOW: Pure client-side Google REST APIs
-      const { createFormREST, addQuestionsREST, createSpreadsheetREST, moveFileToFolder } = await import('../lib/googleApi');
-      
-      // Step A: Create Form
-      const formInfo = await createFormREST(token, parsedTitle, parsedDesc);
-      
-      // Step B: Set Questions
-      await addQuestionsREST(token, formInfo.formId, finalSubmissionQuestions);
-      
-      // Step C: Move Form to selected Drive folder
-      await moveFileToFolder(token, formInfo.formId, folderId);
+      if (!appsScriptSuccessful) {
+        // 2. FALLBACK FLOW: Pure client-side Google REST APIs
+        const { createFormREST, addQuestionsREST, createSpreadsheetREST, moveFileToFolder } = await import('../lib/googleApi');
+        
+        // Step A: Create Form
+        const formInfo = await createFormREST(token, parsedTitle, parsedDesc);
+        
+        // Step B: Set Questions
+        await addQuestionsREST(token, formInfo.formId, finalSubmissionQuestions);
+        
+        // Step C: Move Form to selected Drive folder
+        await moveFileToFolder(token, formInfo.formId, folderId);
 
-      let sheetId: string | undefined = undefined;
-      let sheetUrl: string | undefined = undefined;
+        let sheetId: string | undefined = undefined;
+        let sheetUrl: string | undefined = undefined;
 
-      // Step D: Extract Spreadsheet matching responses
-      if (sheetConnectionMode === 'link_existing' && selectedSheetId) {
-        sheetId = selectedSheetId;
-        sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-      } else if (linkSpreadsheet) {
-        const ssTitle = parsedTitle + ' (Responses)';
-        sheetId = await createSpreadsheetREST(token, ssTitle, folderId);
-        sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+        // Step D: Extract Spreadsheet matching responses
+        if (sheetConnectionMode === 'link_existing' && selectedSheetId) {
+          sheetId = selectedSheetId;
+          sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+        } else if (linkSpreadsheet) {
+          const ssTitle = parsedTitle + ' (Responses)';
+          sheetId = await createSpreadsheetREST(token, ssTitle, folderId);
+          sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+        }
+
+        setCreationResult({
+          formId: formInfo.formId,
+          sheetId,
+          formEditUrl: `https://docs.google.com/forms/d/${formInfo.formId}/edit`,
+          formResponseUrl: formInfo.responderUri,
+          sheetUrl
+        });
       }
-
-      setCreationResult({
-        formId: formInfo.formId,
-        sheetId,
-        formEditUrl: `https://docs.google.com/forms/d/${formInfo.formId}/edit`,
-        formResponseUrl: formInfo.responderUri,
-        sheetUrl
-      });
 
     } catch (err: any) {
       console.error(err);
-      alert(`Gặp lỗi khi tạo tự động: ${err.message || err}. Đang sử dụng phương pháp tự động gốc.`);
+      alert(`Gặp lỗi khi tạo tự động: ${err.message || err}. Vui lòng thử lại hoặc kiểm tra quyền tài khoản.`);
     } finally {
       setIsCreating(false);
     }
