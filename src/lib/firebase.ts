@@ -12,7 +12,16 @@ import {
   User,
   signOut 
 } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCv31OSzgLz6Njq1EsRGE2NhlZNXUT_vzY",
+  authDomain: "quanly-ggform.firebaseapp.com",
+  projectId: "quanly-ggform",
+  storageBucket: "quanly-ggform.firebasestorage.app",
+  messagingSenderId: "1078855687813",
+  appId: "1:1078855687813:web:847cd2ae6769bed37713ec",
+  measurementId: "G-V4NMX7J23F"
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
