@@ -30,6 +30,16 @@ export const getDriveFolders = async (token: string): Promise<DriveFolder[]> => 
 
     const res = await fetch(url, { headers: getHeaders(token) });
     if (!res.ok) {
+      if (res.status === 403) {
+        let errMsg = 'GOOGLE_API_DISABLED: Bạn chưa kích hoạt hoặc cấp đủ quyền truy cập (API) trên Google Cloud Console của dự án của bạn.';
+        try {
+          const errData = await res.json();
+          if (errData.error?.message) {
+            errMsg += ` Chi tiết lỗi từ Google: "${errData.error.message}"`;
+          }
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       throw new Error('Không thể tải danh sách thư mục từ Google Drive');
     }
     const data = await res.json();

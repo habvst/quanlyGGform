@@ -93,6 +93,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
 
   // Drive and Core Data
   const [folders, setFolders] = useState<DriveFolder[]>([]);
@@ -305,12 +306,14 @@ export default function App() {
         setToken(t);
         setNeedsAuth(false);
         setIsLoadingAuth(false);
+        setAuthErrorMessage(null);
         // Load user's folders once login returns
         try {
           const folderList = await getDriveFolders(t);
           setFolders(folderList);
-        } catch (err) {
+        } catch (err: any) {
           console.error('Lỗi định cấu danh sách thư mục Drive:', err);
+          setAuthErrorMessage(err?.message || 'Không thể liên kết dữ liệu từ Google Drive.');
         }
       },
       () => {
@@ -356,6 +359,7 @@ export default function App() {
 
   const handleLogin = async () => {
     setIsLoadingAuth(true);
+    setAuthErrorMessage(null);
     try {
       const res = await googleSignIn();
       if (res) {
@@ -365,8 +369,9 @@ export default function App() {
         const folderList = await getDriveFolders(res.accessToken);
         setFolders(folderList);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Đăng nhập thất bại:', e);
+      setAuthErrorMessage(e?.message || 'Có lỗi xảy ra trong quá trình đăng nhập và nạp dữ liệu từ Google.');
     } finally {
       setIsLoadingAuth(false);
     }
@@ -1285,6 +1290,71 @@ export default function App() {
               <span className="gsi-material-button-contents font-sans font-semibold text-slate-600">Đăng nhập tài khoản Google</span>
             </div>
           </button>
+
+          {authErrorMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-left space-y-2 mt-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="h-4 w-4 text-red-650 shrink-0 mt-0.5" />
+                <div className="space-y-1 min-w-0 flex-1">
+                  <h4 className="text-xs font-bold text-red-800">Cơ chế xác thực chưa được cấp phép (GCP)</h4>
+                  <p className="text-red-700 text-[10.5px] font-medium leading-relaxed">
+                    {authErrorMessage.includes('GOOGLE_API_DISABLED') ? (
+                      <>
+                        Yêu cầu truy cập Google Drive API bị từ chối do bạn chưa kích hoạt các API nền tảng trên Google Cloud Console của dự án <strong>quanly-ggform</strong>.
+                      </>
+                    ) : (
+                      authErrorMessage
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {authErrorMessage.includes('GOOGLE_API_DISABLED') && (
+                <div className="border-t border-red-100 pt-2 text-[10px] space-y-2 text-slate-600 font-sans leading-normal pl-6">
+                  <p className="font-semibold text-slate-800">⚡ Cách xử lý nhanh như sau:</p>
+                  <p>Bạn phải kích hoạt (Enable) cả 3 API này trên Google Cloud mới có thể sử dụng biểu mẫu:</p>
+                  <div className="space-y-1 pl-1 font-semibold text-teal-700 text-[10.5px]">
+                    <div>
+                      👉{' '}
+                      <a 
+                        href="https://console.cloud.google.com/apis/library/drive.googleapis.com?project=quanly-ggform" 
+                        target="_blank" 
+                        rel="noreferrer noopener"
+                        className="underline hover:text-teal-900 transition-colors"
+                      >
+                        Bước 1: Kích hoạt Google Drive API
+                      </a>
+                    </div>
+                    <div>
+                      👉{' '}
+                      <a 
+                        href="https://console.cloud.google.com/apis/library/sheets.googleapis.com?project=quanly-ggform" 
+                        target="_blank" 
+                        rel="noreferrer noopener"
+                        className="underline hover:text-teal-900 transition-colors"
+                      >
+                        Bước 2: Kích hoạt Google Sheets API
+                      </a>
+                    </div>
+                    <div>
+                      👉{' '}
+                      <a 
+                        href="https://console.cloud.google.com/apis/library/forms.googleapis.com?project=quanly-ggform" 
+                        target="_blank" 
+                        rel="noreferrer noopener"
+                        className="underline hover:text-teal-900 transition-colors"
+                      >
+                        Bước 3: Kích hoạt Google Forms API
+                      </a>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-slate-500 leading-relaxed text-[9.5px]">
+                    Lưu ý: Nếu tài khoản đang ở chế độ thử nghiệm (Testing), hãy chắc chắn bạn đã thêm tài sản email của mình vào mục <a href="https://console.cloud.google.com/apis/credentials/consent?project=quanly-ggform" target="_blank" rel="noreferrer" className="underline font-bold text-slate-700 hover:text-slate-900">Màn hình đồng ý OAuth (Consent screen)</a>.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

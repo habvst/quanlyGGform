@@ -35,7 +35,7 @@ provider.addScope('https://www.googleapis.com/auth/forms.body');
 provider.addScope('https://www.googleapis.com/auth/forms.responses.readonly');
 
 let isSigningIn = false;
-let cachedAccessToken: string | null = null;
+let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('medform_access_token') : null;
 
 // Initialize auth state listener
 export const initAuth = (
@@ -48,11 +48,16 @@ export const initAuth = (
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
         // Attempt to restore token or prompt login if not caching
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
+        cachedAccessToken = typeof window !== 'undefined' ? localStorage.getItem('medform_access_token') : null;
+        if (cachedAccessToken) {
+          if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+        } else {
+          if (onAuthFailure) onAuthFailure();
+        }
       }
     } else {
       cachedAccessToken = null;
+      if (typeof window !== 'undefined') localStorage.removeItem('medform_access_token');
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -69,6 +74,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     }
 
     cachedAccessToken = credential.accessToken;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('medform_access_token', cachedAccessToken);
+    }
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Authentication Error:', error);
@@ -87,4 +95,7 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const logout = async () => {
   await signOut(auth);
   cachedAccessToken = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('medform_access_token');
+  }
 };
