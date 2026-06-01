@@ -256,16 +256,18 @@ export default function App() {
         const appsScriptUrl = updatedFolderSettings['_global_']?.appsScriptUrl || updatedFolderSettings[update.formId]?.appsScriptUrl;
         if (appsScriptUrl) {
           try {
-            await fetch(appsScriptUrl, {
+            await fetch('/api/apps-script-proxy', {
               method: 'POST',
-              mode: 'no-cors',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                action: 'toggle_accepting',
-                formId: update.formId,
-                isAccepting: update.nextStatus,
+                url: appsScriptUrl,
+                payload: {
+                  action: 'toggle_accepting',
+                  formId: update.formId,
+                  isAccepting: update.nextStatus,
+                }
               }),
             });
           } catch (scriptErr) {
@@ -631,16 +633,18 @@ export default function App() {
       const appsScriptUrl = folderSettings['_global_']?.appsScriptUrl || updatedFormSetting.appsScriptUrl;
       if (appsScriptUrl) {
         try {
-          await fetch(appsScriptUrl, {
+          await fetch('/api/apps-script-proxy', {
             method: 'POST',
-            mode: 'no-cors',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              action: 'toggle_accepting',
-              formId: newSettings.formId,
-              isAccepting: determinedStatus,
+              url: appsScriptUrl,
+              payload: {
+                action: 'toggle_accepting',
+                formId: newSettings.formId,
+                isAccepting: determinedStatus,
+              }
             }),
           });
         } catch (scriptErr) {
@@ -825,17 +829,19 @@ export default function App() {
       const appsScriptUrl = folderSettings['_global_']?.appsScriptUrl || activeFormForResponses.settings?.appsScriptUrl;
       if (appsScriptUrl) {
         try {
-          // Send cross-origin POST request to Apps Script Web App to trigger core Google Form response deletion
-          await fetch(appsScriptUrl, {
+          // Send cross-origin POST request to Apps Script Web App via server proxy to trigger core Google Form response deletion
+          await fetch('/api/apps-script-proxy', {
             method: 'POST',
-            mode: 'no-cors', // standard way to dispatch to Google Apps Script Web App without CORS blocks
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              action: 'delete_response',
-              formId: activeFormForResponses.id,
-              responseId: responseId,
+              url: appsScriptUrl,
+              payload: {
+                action: 'delete_response',
+                formId: activeFormForResponses.id,
+                responseId: responseId,
+              }
             }),
           });
           formDeleted = true;
@@ -936,16 +942,18 @@ export default function App() {
         await Promise.all(
           selectedItems.map(async (item) => {
             try {
-              await fetch(appsScriptUrl, {
+              await fetch('/api/apps-script-proxy', {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  action: 'delete_response',
-                  formId: activeFormForResponses.id,
-                  responseId: item.responseId,
+                  url: appsScriptUrl,
+                  payload: {
+                    action: 'delete_response',
+                    formId: activeFormForResponses.id,
+                    responseId: item.responseId,
+                  }
                 }),
               });
               formDeleteCount++;
@@ -1052,15 +1060,17 @@ export default function App() {
       
       if (appsScriptUrl) {
         try {
-          await fetch(appsScriptUrl, {
+          await fetch('/api/apps-script-proxy', {
             method: 'POST',
-            mode: 'no-cors',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              action: 'delete_all_responses',
-              formId: activeFormForResponses.id,
+              url: appsScriptUrl,
+              payload: {
+                action: 'delete_all_responses',
+                formId: activeFormForResponses.id,
+              }
             }),
           });
           formDeleted = true;
@@ -1216,16 +1226,18 @@ export default function App() {
     const appsScriptUrl = folderSettings['_global_']?.appsScriptUrl || targetForm?.settings?.appsScriptUrl;
     if (appsScriptUrl) {
       try {
-        await fetch(appsScriptUrl, {
+        await fetch('/api/apps-script-proxy', {
           method: 'POST',
-          mode: 'no-cors',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'toggle_accepting',
-            formId: formId,
-            isAccepting: nextStatus,
+            url: appsScriptUrl,
+            payload: {
+              action: 'toggle_accepting',
+              formId: formId,
+              isAccepting: nextStatus,
+            }
           }),
         });
       } catch (scriptErr) {

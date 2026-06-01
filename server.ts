@@ -139,6 +139,40 @@ ${text}
     }
   });
 
+  // Proxy endpoint to execute Google Apps Script requests server-side bypassing CORS restrictions
+  app.post("/api/apps-script-proxy", async (req, res) => {
+    try {
+      const { url, payload } = req.body;
+      if (!url) {
+        return res.status(400).json({ error: "Thiếu địa chỉ URL Apps Script Web App" });
+      }
+
+      console.log(`[Proxy] Gửi yêu cầu Apps Script: ${url}`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain", // Use text/plain to comply with Apps Script POST handler expectations
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const responseText = await response.text();
+
+      try {
+        const jsonData = JSON.parse(responseText);
+        res.json(jsonData);
+      } catch (e) {
+        // If the response is not valid JSON, send it as plain text or handle redirect-based outputs
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.send(responseText);
+      }
+    } catch (error: any) {
+      console.error("[Apps Script Proxy Error]:", error);
+      res.status(500).json({ error: error.message || "Không thể đồng bộ qua máy chủ trung gian." });
+    }
+  });
+
   // Vite middleware development / production
   const isProd = process.env.NODE_ENV === "production";
   if (!isProd) {

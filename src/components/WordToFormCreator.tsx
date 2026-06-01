@@ -337,6 +337,7 @@ export default function WordToFormCreator({
   const [hasParsed, setHasParsed] = useState(false);
   
   const [isCreating, setIsCreating] = useState(false);
+  const [creationStage, setCreationStage] = useState<string>('');
   const [useAppsScript, setUseAppsScript] = useState(true);
   const [linkSpreadsheet, setLinkSpreadsheet] = useState(true);
 
@@ -652,6 +653,7 @@ export default function WordToFormCreator({
     if (!isConfirmed) return;
 
     setIsCreating(true);
+    setCreationStage('Khởi động thiết lập tạo tệp...');
 
     // Compute actual quiz points allocation on the fly
     const finalSubmissionQuestions = questions.map(q => {
@@ -668,25 +670,29 @@ export default function WordToFormCreator({
     try {
       // 1. Check if Apps Script is configured and should be used
       if (useAppsScript && globalAppsScriptUrl) {
+        setCreationStage('Đang khởi tạo nhanh qua Apps Script...');
         try {
-          const res = await fetch(globalAppsScriptUrl, {
+          const res = await fetch('/api/apps-script-proxy', {
             method: 'POST',
-            mode: 'cors',
             headers: {
-              'Content-Type': 'text/plain', // CORS bypass fallback
+              'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              action: 'create_linked_docx_form',
-              folderId: folderId,
-              title: parsedTitle,
-              description: parsedDesc,
-              questions: finalSubmissionQuestions,
-              sheetId: sheetConnectionMode === 'link_existing' ? selectedSheetId : undefined
+              url: globalAppsScriptUrl,
+              payload: {
+                action: 'create_linked_docx_form',
+                folderId: folderId,
+                title: parsedTitle,
+                description: parsedDesc,
+                questions: finalSubmissionQuestions,
+                sheetId: sheetConnectionMode === 'link_existing' ? selectedSheetId : undefined
+              }
             })
           });
 
           if (!res.ok) {
-            throw new Error(`Apps Script returned error code: ${res.status}`);
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `Apps Script returned error code: ${res.status}`);
           }
 
           const data = await res.json();
@@ -704,22 +710,27 @@ export default function WordToFormCreator({
             throw new Error(data.error || 'Lỗi Apps Script cục bộ');
           }
         } catch (scriptErr: any) {
-          console.warn("Apps Script Error, falling back to direct REST option:", scriptErr);
-          alert(`Không thể kết nối hoặc thực thi Apps Script (Lỗi: ${scriptErr.message || scriptErr}).\nHệ thống sẽ tự động chuyển sang phương thức dự phòng qua Google REST API trực tiếp.`);
+          console.warn("Apps Script Error, auto falling back to Google REST standard flow:", scriptErr);
+          setCreationStage('Đang chuyển hướng sang phương thức dự phòng Google REST API tốt nhất...');
+          await new Promise(resolve => setTimeout(resolve, 800)); // Smooth transit wait to let user read
         }
       }
 
       if (!appsScriptSuccessful) {
         // 2. FALLBACK FLOW: Pure client-side Google REST APIs
+        setCreationStage('Liên kết mô-đun Google Forms API trực tiếp...');
         const { createFormREST, addQuestionsREST, createSpreadsheetREST, moveFileToFolder } = await import('../lib/googleApi');
         
         // Step A: Create Form
+        setCreationStage('Thiết lập biểu mẫu Google Form mới...');
         const formInfo = await createFormREST(token, parsedTitle);
         
         // Step B: Set Questions
+        setCreationStage(`Đang đồng bộ cấu trúc ${finalSubmissionQuestions.length} câu hỏi...`);
         await addQuestionsREST(token, formInfo.formId, finalSubmissionQuestions, parsedDesc);
         
         // Step C: Move Form to selected Drive folder
+        setCreationStage('Di chuyển biểu mẫu vào Thư mục lưu trữ...');
         await moveFileToFolder(token, formInfo.formId, folderId);
 
         let sheetId: string | undefined = undefined;
@@ -727,14 +738,17 @@ export default function WordToFormCreator({
 
         // Step D: Extract Spreadsheet matching responses
         if (sheetConnectionMode === 'link_existing' && selectedSheetId) {
+          setCreationStage('Đang ghép nối với Google Sheet sẵn có...');
           sheetId = selectedSheetId;
           sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
         } else if (linkSpreadsheet) {
+          setCreationStage('Đang tạo mới và đồng bộ Google Sheets đối sánh ứng viên...');
           const ssTitle = parsedTitle + ' (Responses)';
           sheetId = await createSpreadsheetREST(token, ssTitle, folderId);
           sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
         }
 
+        setCreationStage('Không gian khởi tạo liên kết hoàn thành!');
         setCreationResult({
           formId: formInfo.formId,
           sheetId,
@@ -1473,10 +1487,13 @@ export default function WordToFormCreator({
                     className="px-7 py-3 bg-white text-indigo-950 hover:bg-slate-50 cursor-pointer rounded-2xl font-sans text-xs font-black shadow-lg flex items-center space-x-2.5 transition-all disabled:bg-slate-500 disabled:text-slate-350 hover:scale-[1.01] active:scale-100"
                   >
                     {isCreating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin text-indigo-700 animate-pulse" />
-                        <span>Đang kiến tạo liên kết...</span>
-                      </>
+                      <div className="flex items-center space-x-2 text-left">
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-700 shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="font-bold text-[11px] text-indigo-950">Đang tự động xử lý...</span>
+                          <span className="text-[9.5px] text-indigo-600 font-medium leading-none mt-1 animate-pulse">{creationStage || 'Vui lòng đợi giây lát...'}</span>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         <Play className="h-4 w-4 text-indigo-600 shrink-0" />
@@ -1576,37 +1593,40 @@ export default function WordToFormCreator({
             </div>
 
             {creationResult.wasFallback && (
-              <div className="max-w-md mx-auto bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-3 mt-4 text-xs font-sans">
-                <div className="flex items-start space-x-2">
-                  <AlertCircle className="h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+              <div className="max-w-md mx-auto bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-5 text-left space-y-3 mt-4 text-xs font-sans">
+                <div className="flex items-start space-x-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-bold text-amber-900">💡 Hướng dẫn liên kết Google Sheet (Cực kỳ quan trọng)</h4>
-                    <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
-                      Do cơ chế bảo mật của Google REST API, Google không cho phép ứng dụng bên thứ ba tự động cấu hình đích lưu trữ cho Google Forms nếu không đi qua Apps Script. Hãy hoàn tất liên kết bằng 4 bước siêu nhanh sau:
+                    <h4 className="font-bold text-slate-800 text-[13px]">🎉 Đã tạo Biểu mẫu & Bảng tính thành công!</h4>
+                    <p className="text-slate-600 text-[11px] mt-1 leading-relaxed">
+                      Để câu trả lời từ người điền tự động chảy về tệp Google Sheets đồng bộ vừa khởi tạo, hãy hoàn tất liên kết nhanh bằng cách thực hiện 4 bước siêu dễ sau:
                     </p>
                   </div>
                 </div>
-                <div className="border-t border-amber-200/60 pt-3 space-y-2 text-[10.5px] text-slate-700 pl-6 list-decimal font-medium leading-relaxed">
-                  <div className="flex items-start gap-1">
-                    <span className="font-bold shrink-0">Bước 1:</span>
-                    <span>Bấm nút <strong className="text-indigo-700 font-bold">"Mở chỉnh sửa Google Form"</strong> ở trên.</span>
+                
+                <div className="border-t border-emerald-200/30 pt-3 space-y-2.5 text-[11px] text-slate-700 pl-1 leading-relaxed">
+                  <div className="flex items-start gap-2.5">
+                    <span className="font-bold text-indigo-650 bg-indigo-50 leading-none py-1 px-1.5 rounded text-[10px] shrink-0 mt-0.5">Bước 1</span>
+                    <span>Bấm nút <strong className="text-indigo-700 font-semibold">"Mở chỉnh sửa Google Form"</strong> ở trên.</span>
                   </div>
-                  <div className="flex items-start gap-1">
-                    <span className="font-bold shrink-0">Bước 2:</span>
-                    <span>Chọn thẻ <strong className="text-indigo-800 font-bold">"Câu trả lời"</strong> (Responses) ở giữa đầu trang.</span>
+                  <div className="flex items-start gap-2.5">
+                    <span className="font-bold text-indigo-650 bg-indigo-50 leading-none py-1 px-1.5 rounded text-[10px] shrink-0 mt-0.5">Bước 2</span>
+                    <span>Chọn thẻ <strong className="text-indigo-800 font-semibold">"Câu trả lời"</strong> (Responses) ở giữa đầu trang của biểu mẫu.</span>
                   </div>
-                  <div className="flex items-start gap-1">
-                    <span className="font-bold shrink-0">Bước 3:</span>
-                    <span>Bấm nút biểu tượng nút xanh lá <strong className="text-emerald-700 font-bold">"Liên kết với Trang tính"</strong> (Link with Sheets).</span>
+                  <div className="flex items-start gap-2.5">
+                    <span className="font-bold text-emerald-700 bg-emerald-50 leading-none py-1 px-1.5 rounded text-[10px] shrink-0 mt-0.5">Bước 3</span>
+                    <span>Nhấp vào biểu tượng nút xanh lá <strong className="text-emerald-700 font-semibold">"Liên kết với Trang tính"</strong> (Link with Sheets).</span>
                   </div>
-                  <div className="flex items-start gap-1">
-                    <span className="font-bold shrink-0">Bước 4:</span>
-                    <span>Chọn <strong className="text-slate-800 font-bold">"Chọn trang tính hiện có"</strong> (Select existing spreadsheet), sau đó nhấp chọn đúng tệp Sheet rỗng vừa được tạo sẵn ở trên!</span>
+                  <div className="flex items-start gap-2.5">
+                    <span className="font-bold text-emerald-700 bg-emerald-50 leading-none py-1 px-1.5 rounded text-[10px] shrink-0 mt-0.5">Bước 4</span>
+                    <span>Tích chọn <strong className="text-slate-800 font-semibold">"Chọn trang tính hiện có"</strong> (Select existing spreadsheet), sau đó tìm và chọn đúng tệp Sheet rỗng vừa được tạo sẵn ở trên!</span>
                   </div>
                 </div>
-                <p className="text-[10px] pl-6 text-slate-500 italic mt-1 font-semibold leading-normal">
-                  💡 Thao tác này chỉ cần thực hiện 1 lần duy nhất cho mỗi biểu mẫu để tự động hóa trọn đời!
-                </p>
+                
+                <div className="bg-white/65 rounded-lg p-2 text-[10px] text-slate-500 italic mt-2 font-medium leading-normal flex gap-1.5 items-center">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  <span>Chỉ cần thực hiện 1 lần duy nhất cho mỗi biểu mẫu để tự động đồng bộ dữ liệu trọn đời!</span>
+                </div>
               </div>
             )}
 
