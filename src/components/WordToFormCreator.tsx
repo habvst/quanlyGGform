@@ -385,6 +385,7 @@ export default function WordToFormCreator({
     formEditUrl?: string;
     formResponseUrl?: string;
     sheetUrl?: string;
+    wasFallback?: boolean;
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -692,7 +693,8 @@ export default function WordToFormCreator({
               sheetId: data.sheetId,
               formEditUrl: `https://docs.google.com/forms/d/${data.formId}/edit`,
               formResponseUrl: data.responderUri || `https://docs.google.com/forms/d/${data.formId}/viewform`,
-              sheetUrl: data.sheetId ? `https://docs.google.com/spreadsheets/d/${data.sheetId}/edit` : undefined
+              sheetUrl: data.sheetId ? `https://docs.google.com/spreadsheets/d/${data.sheetId}/edit` : undefined,
+              wasFallback: false
             });
             appsScriptSuccessful = true;
           } else {
@@ -735,7 +737,8 @@ export default function WordToFormCreator({
           sheetId,
           formEditUrl: `https://docs.google.com/forms/d/${formInfo.formId}/edit`,
           formResponseUrl: formInfo.responderUri,
-          sheetUrl
+          sheetUrl,
+          wasFallback: true
         });
       }
 
@@ -1568,6 +1571,41 @@ export default function WordToFormCreator({
                 </a>
               )}
             </div>
+
+            {creationResult.wasFallback && (
+              <div className="max-w-md mx-auto bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-3 mt-4 text-xs font-sans">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+                  <div>
+                    <h4 className="font-bold text-amber-900">💡 Hướng dẫn liên kết Google Sheet (Cực kỳ quan trọng)</h4>
+                    <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
+                      Do cơ chế bảo mật của Google REST API, Google không cho phép ứng dụng bên thứ ba tự động cấu hình đích lưu trữ cho Google Forms nếu không đi qua Apps Script. Hãy hoàn tất liên kết bằng 4 bước siêu nhanh sau:
+                    </p>
+                  </div>
+                </div>
+                <div className="border-t border-amber-200/60 pt-3 space-y-2 text-[10.5px] text-slate-700 pl-6 list-decimal font-medium leading-relaxed">
+                  <div className="flex items-start gap-1">
+                    <span className="font-bold shrink-0">Bước 1:</span>
+                    <span>Bấm nút <strong className="text-indigo-700 font-bold">"Mở chỉnh sửa Google Form"</strong> ở trên.</span>
+                  </div>
+                  <div className="flex items-start gap-1">
+                    <span className="font-bold shrink-0">Bước 2:</span>
+                    <span>Chọn thẻ <strong className="text-indigo-800 font-bold">"Câu trả lời"</strong> (Responses) ở giữa đầu trang.</span>
+                  </div>
+                  <div className="flex items-start gap-1">
+                    <span className="font-bold shrink-0">Bước 3:</span>
+                    <span>Bấm nút biểu tượng nút xanh lá <strong className="text-emerald-700 font-bold">"Liên kết với Trang tính"</strong> (Link with Sheets).</span>
+                  </div>
+                  <div className="flex items-start gap-1">
+                    <span className="font-bold shrink-0">Bước 4:</span>
+                    <span>Chọn <strong className="text-slate-800 font-bold">"Chọn trang tính hiện có"</strong> (Select existing spreadsheet), sau đó nhấp chọn đúng tệp Sheet rỗng vừa được tạo sẵn ở trên!</span>
+                  </div>
+                </div>
+                <p className="text-[10px] pl-6 text-slate-500 italic mt-1 font-semibold leading-normal">
+                  💡 Thao tác này chỉ cần thực hiện 1 lần duy nhất cho mỗi biểu mẫu để tự động hóa trọn đời!
+                </p>
+              </div>
+            )}
 
             {/* Done button return */}
             <div className="border-t border-slate-100 pt-6 max-w-md mx-auto flex gap-3">
