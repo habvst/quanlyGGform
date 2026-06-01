@@ -536,8 +536,14 @@ export default function App() {
   const handleSaveFormSettings = async (newSettings: FormConfigSettings) => {
     if (!token || !selectedFolderId) return;
 
+    const originalForm = forms.find(f => f.id === newSettings.formId);
+    const currentAccepting = originalForm ? originalForm.isAcceptingResponses : true;
+
     // Check time limit alignment if enabled
-    let determinedStatus = newSettings.isAcceptingResponses !== undefined ? newSettings.isAcceptingResponses : true;
+    let determinedStatus = newSettings.isAcceptingResponses !== undefined 
+      ? newSettings.isAcceptingResponses 
+      : currentAccepting;
+      
     let autoTimeLimitApplied = false;
     let autoTimeLimitMsg = '';
 
@@ -563,7 +569,6 @@ export default function App() {
     }
 
     // Kiểm tra giới hạn số lượng phản hồi tối đa khi lưu thiết lập mới
-    const originalForm = forms.find(f => f.id === newSettings.formId);
     const currentCount = originalForm ? originalForm.responsesCount : 0;
 
     if (newSettings.enableMaxResponses && currentCount >= newSettings.maxResponses) {

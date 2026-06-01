@@ -573,8 +573,7 @@ export const updateFormGeneralAccess = async (
 // 13. Create Google Form via Forms REST API
 export const createFormREST = async (
   token: string,
-  title: string,
-  description?: string
+  title: string
 ): Promise<{ formId: string; responderUri: string }> => {
   const url = `${FORMS_API_URL}/forms`;
   const res = await fetch(url, {
@@ -583,8 +582,6 @@ export const createFormREST = async (
     body: JSON.stringify({
       info: {
         title: title,
-        documentTitle: title,
-        description: description || '',
       },
     }),
   });
@@ -603,12 +600,25 @@ export const createFormREST = async (
 export const addQuestionsREST = async (
   token: string,
   formId: string,
-  questions: { title: string; type: string; options?: string[]; required: boolean; points?: number; correctAnswer?: string }[]
+  questions: { title: string; type: string; options?: string[]; required: boolean; points?: number; correctAnswer?: string }[],
+  description?: string
 ): Promise<boolean> => {
-  if (questions.length === 0) return true;
+  if (questions.length === 0 && !description) return true;
   const url = `${FORMS_API_URL}/forms/${formId}:batchUpdate`;
   
   const requests: any[] = [];
+  
+  if (description) {
+    requests.push({
+      updateFormInfo: {
+        info: {
+          description: description
+        },
+        updateMask: "description"
+      }
+    });
+  }
+
   const hasQuiz = questions.some(q => q.points !== undefined && q.points > 0);
   
   if (hasQuiz) {

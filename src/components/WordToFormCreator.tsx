@@ -709,10 +709,10 @@ export default function WordToFormCreator({
         const { createFormREST, addQuestionsREST, createSpreadsheetREST, moveFileToFolder } = await import('../lib/googleApi');
         
         // Step A: Create Form
-        const formInfo = await createFormREST(token, parsedTitle, parsedDesc);
+        const formInfo = await createFormREST(token, parsedTitle);
         
         // Step B: Set Questions
-        await addQuestionsREST(token, formInfo.formId, finalSubmissionQuestions);
+        await addQuestionsREST(token, formInfo.formId, finalSubmissionQuestions, parsedDesc);
         
         // Step C: Move Form to selected Drive folder
         await moveFileToFolder(token, formInfo.formId, folderId);
