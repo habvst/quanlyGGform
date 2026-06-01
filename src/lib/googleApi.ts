@@ -658,7 +658,7 @@ export const addQuestionsREST = async (
 
     if (q.points !== undefined && q.points > 0) {
       questionItem.grading = {
-        pointValue: q.points,
+        pointValue: Math.max(1, Math.round(q.points)),
       };
       if (q.correctAnswer) {
         questionItem.grading.correctAnswers = {

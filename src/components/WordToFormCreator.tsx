@@ -654,11 +654,14 @@ export default function WordToFormCreator({
     setIsCreating(true);
 
     // Compute actual quiz points allocation on the fly
-    const finalSubmissionQuestions = questions.map(q => ({
-      ...q,
-      points: isQuizMode ? getQuestionPoints(q) : undefined,
-      correctAnswer: isQuizMode ? q.correctAnswer : undefined
-    }));
+    const finalSubmissionQuestions = questions.map(q => {
+      const computedPoints = isQuizMode ? getQuestionPoints(q) : undefined;
+      return {
+        ...q,
+        points: computedPoints !== undefined && computedPoints > 0 ? Math.max(1, Math.round(computedPoints)) : undefined,
+        correctAnswer: isQuizMode ? q.correctAnswer : undefined
+      };
+    });
 
     let appsScriptSuccessful = false;
 
