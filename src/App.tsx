@@ -8,7 +8,7 @@ import {
   initAuth, googleSignIn, logout, getAccessToken 
 } from './lib/firebase';
 import { 
-  getDriveFolders, getFolderContents, getFormDetails, 
+  getDriveFolders, getFolderContents, getFormDetails, getFormResponses,
   getLinkedSheetData, deleteSheetRow, deleteSheetRows, deleteAllSheetResponses, loadFolderSettings, saveFolderSettings 
 } from './lib/googleApi';
 import { 
@@ -316,6 +316,14 @@ export default function App() {
         } catch (err: any) {
           console.error('Lỗi định cấu danh sách thư mục Drive:', err);
           setAuthErrorMessage(err?.message || 'Không thể liên kết dữ liệu từ Google Drive.');
+          
+          // Reset session safely so user sees the login guide and can re-authenticate
+          setUser(null);
+          setToken(null);
+          setNeedsAuth(true);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('medform_access_token');
+          }
         }
       },
       () => {
@@ -430,16 +438,18 @@ export default function App() {
             emailWhitelist: '',
           };
 
-          // Link Spreadsheet: Try mapping Spreadsheet having the SAME title, or first Spreadsheet
-          let matchedSheetId: string | null = null;
-          const matchingSheet = scannedSheets.find(
-            (s) => s.name.toLowerCase().includes(detail.title.toLowerCase()) || detail.title.toLowerCase().includes(s.name.toLowerCase())
-          );
+          // Link Spreadsheet: Prioritize native Google Form linkedSheetId first.
+          // Fallback to strict folder name-match only if the Google Form doesn't provide linkedSheetId and name correlates.
+          // NEVER fallback blindly to generic single sheet in folder, which causes wrong mappings.
+          let matchedSheetId: string | null = detail.linkedSheetId || null;
 
-          if (matchingSheet) {
-            matchedSheetId = matchingSheet.id;
-          } else if (scannedSheets.length > 0) {
-            matchedSheetId = scannedSheets[0].id; // Fallback to first spreadsheet
+          if (!matchedSheetId) {
+            const matchingSheet = scannedSheets.find(
+              (s) => s.name.toLowerCase().includes(detail.title.toLowerCase()) || detail.title.toLowerCase().includes(s.name.toLowerCase())
+            );
+            if (matchingSheet) {
+              matchedSheetId = matchingSheet.id;
+            }
           }
 
           let responseCount = 0;
@@ -482,7 +492,41 @@ export default function App() {
               responseCount = currentRows.length;
               formRows = currentRows;
             } catch (e) {
-              console.warn(`Lỗi khi đếm dòng từ Sheet của Form ${form.id}:`, e);
+              console.warn(`Lỗi khi đếm dòng từ Sheet của Form ${form.id}, kích hoạt phản hồi trực tiếp Forms API:`, e);
+              try {
+                const directResponses = await getFormResponses(token, form.id);
+                responseCount = directResponses.length;
+                if (directResponses.length > 0) {
+                  formHeaders = ['Dấu thời gian', 'Email'].concat(detail.questions.map(q => q.title));
+                  formRows = directResponses.map(resp => {
+                    const row = [resp.timestamp || '', resp.email || 'Ẩn danh'];
+                    detail.questions.forEach(q => {
+                      row.push(resp.answers[q.id] || '');
+                    });
+                    return row;
+                  });
+                }
+              } catch (formsErr) {
+                console.warn(`Không thể lấy phản hồi trực tiếp từ Forms API sau lỗi Sheets:`, formsErr);
+              }
+            }
+          } else {
+            // Direct query using Google Forms Responses API (since there is no matching spreadsheet)
+            try {
+              const directResponses = await getFormResponses(token, form.id);
+              responseCount = directResponses.length;
+              if (directResponses.length > 0) {
+                formHeaders = ['Dấu thời gian', 'Email'].concat(detail.questions.map(q => q.title));
+                formRows = directResponses.map(resp => {
+                  const row = [resp.timestamp || '', resp.email || 'Ẩn danh'];
+                  detail.questions.forEach(q => {
+                    row.push(resp.answers[q.id] || '');
+                  });
+                  return row;
+                });
+              }
+            } catch (e) {
+              console.warn(`Lỗi khi lấy phản hồi trực tiếp từ Forms API cho ${form.id}:`, e);
             }
           }
 
@@ -708,9 +752,56 @@ export default function App() {
     setIsFetchingResponses(true);
 
     if (!form.linkedSheetId) {
-      alert('Biểu mẫu chưa được xuất dữ liệu kết nối Spreadsheet. Vui lòng tạo tệp Spreadsheet cho nó trước trên Drive!');
-      setIsFetchingResponses(false);
-      return;
+      // Direct query using Google Forms Responses API (since there is no matching spreadsheet yet)
+      try {
+        const directResponses = await getFormResponses(token, form.id);
+        const headers = ['Dấu thời gian', 'Email'].concat(form.questions.map(q => q.title));
+        
+        setFormResponsesHeaders(headers);
+        setFormResponsesRows([]);
+
+        const mappedList = directResponses.map((resp, rIdx) => {
+          const answers: Record<string, string> = {};
+          answers['Dấu thời gian'] = resp.timestamp || '';
+          answers['Email'] = resp.email || 'Ẩn danh';
+          
+          form.questions.forEach(q => {
+            answers[q.title] = resp.answers[q.id] || '';
+          });
+
+          return {
+            responseId: resp.responseId,
+            originalIndex: rIdx,
+            timestamp: resp.timestamp || '',
+            email: resp.email || 'Ẩn danh',
+            answers,
+            rowValues: [resp.timestamp || '', resp.email || 'Ẩn danh'].concat(form.questions.map(q => resp.answers[q.id] || ''))
+          };
+        });
+
+        setFormResponsesList(mappedList);
+        
+        // Sync freshly fetched responses back to central forms state
+        setForms(prev => prev.map(f => {
+          if (f.id === form.id) {
+            return {
+              ...f,
+              responsesCount: mappedList.length,
+              headers: headers,
+              rawRows: mappedList.map(item => item.rowValues)
+            };
+          }
+          return f;
+        }));
+        
+        setIsFetchingResponses(false);
+        return;
+      } catch (e) {
+        console.error('Lỗi khi nạp trực tiếp đầu ra từ Forms API:', e);
+        alert('Biểu mẫu chưa được xuất kết nối với Google Sheet, và xảy ra lỗi khi nạp câu trả lời trực tiếp của Google Forms!');
+        setIsFetchingResponses(false);
+        return;
+      }
     }
 
     try {
@@ -1313,7 +1404,9 @@ export default function App() {
               <div className="flex items-start space-x-2">
                 <AlertCircle className="h-5 w-5 text-red-650 shrink-0 mt-0.5 animate-pulse" />
                 <div className="space-y-1 min-w-0 flex-1">
-                  <h4 className="text-sm font-bold text-red-800">Cơ chế xác thực chưa được cấp phép (GCP)</h4>
+                  <h4 className="text-sm font-bold text-red-800">
+                    {authErrorMessage.includes('TOKEN_EXPIRED') ? 'Phiên làm việc hết hạn' : 'Cơ chế xác thực chưa được cấp phép (GCP)'}
+                  </h4>
                   <p className="text-red-700 text-[11px] font-medium leading-relaxed">
                     {authErrorMessage.includes('unauthorized-domain') ? (
                       <>
@@ -1327,6 +1420,10 @@ export default function App() {
                       <>
                         Yêu cầu truy cập Google Drive API bị từ chối do bạn chưa kích hoạt các API nền tảng trên Google Cloud Console của dự án <strong>quanly-ggform</strong>.
                       </>
+                    ) : authErrorMessage.includes('TOKEN_EXPIRED') ? (
+                      <>
+                        Phiên kết nối của bạn đã hết hạn bảo mật sau một thời gian không hoạt động. Vui lòng bấm nút <strong>"Đăng nhập tài khoản Google"</strong> ở phía trên để làm mới phiên kết nối và tải lại danh sách thư mục.
+                      </>
                     ) : (
                       authErrorMessage
                     )}
@@ -1339,46 +1436,55 @@ export default function App() {
                 <div className="border-t border-red-200/50 pt-3 text-[11px] space-y-3 text-slate-700 font-sans leading-normal">
                   <p className="font-bold text-red-900 text-xs">🛠️ Cách cấp quyền cho tên miền này cực nhanh (chỉ cần làm 1 lần):</p>
                   <p className="leading-relaxed">
-                    Để cho phép đăng nhập qua Firebase trên miền này, vui lòng truy cập Trang quản trị Firebase của bạn và thêm tên miền hiện tại vào danh sách ủy quyền:
+                    Firebase yêu cầu bạn phải khai báo tất cả tên miền được phép đăng nhập. Vui lòng thêm các tên miền bạn đang sử dụng vào danh sách ủy quyền trên trang quản lý Firebase:
                   </p>
 
-                  <div className="bg-white border border-red-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Tên miền cần thêm:</span>
-                      <code className="text-xs font-mono font-bold text-indigo-700 select-all bg-indigo-50/50 px-1.5 py-0.5 rounded sm:block mt-1">
-                        {typeof window !== 'undefined' ? window.location.hostname : 'quanly-g-gform.vercel.app'}
-                      </code>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          navigator.clipboard.writeText(window.location.hostname);
-                          alert('Đã copy tên miền: ' + window.location.hostname);
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold self-start sm:self-center transition-all cursor-pointer shadow-sm hover:scale-102"
-                    >
-                      Copy tên miền
-                    </button>
+                  <div className="space-y-2 bg-white/70 border border-red-100 rounded-xl p-3 shadow-inner">
+                    <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider mb-2">Danh sách tên miền cần thêm:</span>
+                    
+                    {/* Domain Array Mapping to make copy super easy */}
+                    {[
+                      typeof window !== 'undefined' ? window.location.hostname : '',
+                      'quanly-g-gform.vercel.app',
+                      'ais-dev-vrtk4kaelgu3b6o65c2kr2-634935350352.asia-southeast1.run.app',
+                      'ais-pre-vrtk4kaelgu3b6o65c2kr2-634935350352.asia-southeast1.run.app'
+                    ].filter((domain, index, self) => domain && self.indexOf(domain) === index && domain !== 'localhost').map((domain, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-lg p-2 shadow-sm">
+                        <code className="text-xs font-mono font-bold text-indigo-700 select-all bg-indigo-50/30 px-1.5 py-0.5 rounded truncate max-w-[70%]">
+                          {domain}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              navigator.clipboard.writeText(domain);
+                              alert('Đã copy tên miền: ' + domain);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded text-[10px] font-bold transition-all cursor-pointer shrink-0"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="space-y-2 text-[10.5px] leading-relaxed pl-1">
                     <div className="flex items-start gap-1">
                       <span className="font-bold shrink-0 text-red-800">Bước 1:</span>
-                      <span>Bấm vào link: <a href="https://console.firebase.google.com/project/quanly-ggform/authentication/settings" target="_blank" rel="noreferrer noopener" className="underline font-bold text-indigo-600 hover:text-indigo-800">Mở Cài đặt Authentication của Firebase</a>.</span>
+                      <span>Bấm vào link này: <a href="https://console.firebase.google.com/project/quanly-ggform/authentication/settings" target="_blank" rel="noreferrer noopener" className="underline font-bold text-indigo-600 hover:text-indigo-800">Mở Cài đặt Authentication của Firebase</a>.</span>
                     </div>
                     <div className="flex items-start gap-1">
                       <span className="font-bold shrink-0 text-red-800">Bước 2:</span>
-                      <span>Ở menu trên cùng chọn tab <strong className="text-slate-900">"Settings"</strong> (Cài đặt) ➔ bên trái chọn mục <strong className="text-slate-900">"Authorized domains"</strong> (Miền được ủy quyền).</span>
+                      <span>Tại giao diện Firebase Console, chọn tab <strong className="text-slate-900">"Settings"</strong> (Cài đặt) ở trên cùng ➔ chọn tab <strong className="text-slate-900">"Authorized domains"</strong> (Miền được ủy quyền) ở cột bên trái.</span>
                     </div>
                     <div className="flex items-start gap-1">
                       <span className="font-bold shrink-0 text-red-800">Bước 3:</span>
-                      <span>Bấm nút <strong className="text-indigo-700 font-bold">"Add domain"</strong> (Thêm miền), dán tên miền vừa copy ở trên vào và bấm <strong className="font-bold">Add</strong>.</span>
+                      <span>Bấm nút <strong className="text-indigo-700 font-bold">"Add domain"</strong> (Thêm miền), dán tên miền vừa copy vào ô nhập và bấm nút <strong className="font-bold">Add</strong>. Thêm đầy đủ cả tên miền Vercel và các tên miền xem trước ở trên nếu bạn dùng trên nhiều môi trường khác nhau.</span>
                     </div>
                     <div className="flex items-start gap-1">
                       <span className="font-bold shrink-0 text-red-800">Bước 4:</span>
-                      <span>Quay lại đây, tải lại trang web (F5) và bấm nút đăng nhập lại.</span>
+                      <span>Quay lại đây, tải lại trang web (F5 hoặc tải lại trình duyệt) rồi bấm nút đăng nhập màu Đỏ-Xanh-Vàng của Google ở trên để tiếp tục làm việc bình thường!</span>
                     </div>
                   </div>
                 </div>

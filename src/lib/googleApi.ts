@@ -30,17 +30,23 @@ export const getDriveFolders = async (token: string): Promise<DriveFolder[]> => 
 
     const res = await fetch(url, { headers: getHeaders(token) });
     if (!res.ok) {
+      let extraInfo = '';
+      try {
+        const errData = await res.json();
+        if (errData.error?.message) {
+          extraInfo = ` Chi tiết lỗi: "${errData.error.message}"`;
+        }
+      } catch (e) {}
+
+      if (res.status === 401) {
+        throw new Error(`TOKEN_EXPIRED: Phiên xác thực Google của bạn đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại để làm mới danh sách thư mục.${extraInfo}`);
+      }
+
       if (res.status === 403) {
-        let errMsg = 'GOOGLE_API_DISABLED: Bạn chưa kích hoạt hoặc cấp đủ quyền truy cập (API) trên Google Cloud Console của dự án của bạn.';
-        try {
-          const errData = await res.json();
-          if (errData.error?.message) {
-            errMsg += ` Chi tiết lỗi từ Google: "${errData.error.message}"`;
-          }
-        } catch (e) {}
+        let errMsg = 'GOOGLE_API_DISABLED: Bạn chưa kích hoạt hoặc cấp đủ quyền truy cập (API) trên Google Cloud Console của dự án của bạn.' + extraInfo;
         throw new Error(errMsg);
       }
-      throw new Error('Không thể tải danh sách thư mục từ Google Drive');
+      throw new Error(`Không thể tải danh sách thư mục từ Google Drive (Mã lỗi: ${res.status}).${extraInfo}`);
     }
     const data = await res.json();
     const files = data.files || [];
@@ -94,10 +100,28 @@ export const getFormDetails = async (token: string, formId: string): Promise<Goo
   if (data.items) {
     data.items.forEach((item: any) => {
       if (item.questionItem) {
+        const q = item.questionItem.question;
+        let qType = 'TEXT';
+        if (q.choiceQuestion) qType = q.choiceQuestion.type;
+        else if (q.scaleQuestion) qType = 'SCALE';
+        else if (q.dateQuestion) qType = 'DATE';
+        else if (q.timeQuestion) qType = 'TIME';
+        else if (q.fileUploadQuestion) qType = 'FILE';
+
         questions.push({
-          id: item.questionItem.question.questionId,
+          id: q.questionId,
           title: item.title || 'Không có tiêu đề',
-          type: item.questionItem.question.choiceQuestion?.type || 'TEXT',
+          type: qType,
+        });
+      } else if (item.questionGroupItem && item.questionGroupItem.questions) {
+        item.questionGroupItem.questions.forEach((q: any) => {
+          questions.push({
+            id: q.questionId,
+            title: item.title 
+              ? `${item.title} [${q.rowQuestion?.title || 'Câu hỏi phụ'}]` 
+              : (q.rowQuestion?.title || 'Không có tiêu đề'),
+            type: q.choiceQuestion?.type || 'TEXT',
+          });
         });
       }
     });
@@ -109,6 +133,7 @@ export const getFormDetails = async (token: string, formId: string): Promise<Goo
     description: data.info?.description || '',
     responderUri: data.responderUri || '',
     isAcceptingResponses: true, // This can be managed granularly by our App Script and state-enforcement
+    linkedSheetId: data.linkedSheetId || null,
     responsesCount: 0, // Will be fetched from sheet or responses API
     questions,
   };
@@ -155,6 +180,10 @@ export const getLinkedSheetData = async (
   formTitle?: string,
   range = 'Form Responses 1!A1:Z500' // Google Form default sheet page name
 ): Promise<{ headers: string[]; rows: string[][]; sheetTitle: string }> => {
+  if (!spreadsheetId || spreadsheetId === 'undefined' || spreadsheetId === 'null') {
+    throw new Error('Mã ID trang tính không hợp lệ hoặc rỗng. Hãy kiểm tra liên kết của biểu mẫu.');
+  }
+
   // First, check spreadsheet sheets/pages name list to target the matching tab
   let targetRange = range;
   try {
@@ -216,31 +245,43 @@ export const getLinkedSheetData = async (
       if (bestSheetTitle) {
         targetRange = `'${bestSheetTitle}'!A1:Z500`;
       }
+    } else {
+      console.warn(`Lỗi khi lấy thông tin danh sách tệp Google Sheets (Mã lỗi: ${metaRes.status}). Sẽ sử dụng tab mặc định.`);
     }
-  } catch (e) {
-    console.error('Lỗi khi lấy thông tin trang tính:', e);
+  } catch (e: any) {
+    console.warn('Lỗi khi lấy cấu trúc các tab của trang tính:', e?.message || e);
   }
 
   const url = `${SHEETS_API_URL}/${spreadsheetId}/values/${encodeURIComponent(targetRange)}`;
-  const res = await fetch(url, { headers: getHeaders(token) });
-  if (!res.ok) {
-    throw new Error('Thất bại khi liên kết đọc dữ liệu trang tính Google Sheets.');
+  try {
+    const res = await fetch(url, { headers: getHeaders(token) });
+    if (!res.ok) {
+      if (res.status === 403) {
+        throw new Error('Bạn không có quyền truy cập trang tính chứa câu trả lời. Vui lòng kiểm tra lại liên kết hoặc quyền chia sẻ của tệp Google Sheets tương ứng.');
+      }
+      throw new Error(`Thất bại khi liên kết đọc dữ liệu trang tính Google Sheets (Mã lỗi từ máy chủ: ${res.status}).`);
+    }
+    const data = await res.json();
+    const values: string[][] = data.values || [];
+
+    if (values.length === 0) {
+      return { headers: [], rows: [], sheetTitle: targetRange.split('!')[0].replace(/'/g, '') };
+    }
+
+    const headers = values[0];
+    const rows = values.slice(1);
+
+    return {
+      headers,
+      rows,
+      sheetTitle: targetRange.split('!')[0].replace(/'/g, ''),
+    };
+  } catch (err: any) {
+    if (err.message === 'Failed to fetch') {
+      throw new Error('Không thể kết nối đến máy chủ Google Sheets (Failed to fetch). Vui lòng kiểm tra lại trạng thái mạng Internet hoặc quyền chia sẻ công khai của tệp trang tính liên kết.');
+    }
+    throw err;
   }
-  const data = await res.json();
-  const values: string[][] = data.values || [];
-
-  if (values.length === 0) {
-    return { headers: [], rows: [], sheetTitle: targetRange.split('!')[0].replace(/'/g, '') };
-  }
-
-  const headers = values[0];
-  const rows = values.slice(1);
-
-  return {
-    headers,
-    rows,
-    sheetTitle: targetRange.split('!')[0].replace(/'/g, ''),
-  };
 };
 
 // 6. Delete a specific response row in Google Sheets

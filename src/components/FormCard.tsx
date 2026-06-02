@@ -67,7 +67,23 @@ export default function FormCard({
             <h3 className="font-sans font-bold text-base text-slate-900 line-clamp-2 leading-snug group-hover:text-teal-600 transition-colors">
               {form.title}
             </h3>
-            <p className="text-slate-500 text-xs line-clamp-2 mt-1 min-h-[32px] leading-relaxed">
+            
+            {/* Sheet Connection Status Badge */}
+            <div className="flex items-center space-x-1.5 mt-2">
+              {form.linkedSheetId ? (
+                <span className="inline-flex items-center space-x-1 text-[9px] font-sans font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200/60 shadow-2xs">
+                  <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
+                  <span>Đã kết nối Google Sheet</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center space-x-1 text-[9px] font-sans font-bold uppercase tracking-wider bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200/60 shadow-2xs">
+                  <FileSpreadsheet className="h-3 w-3 text-amber-600 animate-pulse" />
+                  <span>Chưa liên kết Google Sheet</span>
+                </span>
+              )}
+            </div>
+
+            <p className="text-slate-500 text-xs line-clamp-2 mt-2.5 min-h-[32px] leading-relaxed">
               {form.description || 'Không có mô tả chi tiết cho biểu mẫu này.'}
             </p>
           </div>

@@ -9,8 +9,9 @@ import {
   X, Save, Calendar, ShieldCheck, Mail, Clock, HelpCircle, 
   AlertCircle, ChevronRight, ToggleLeft, ToggleRight, Globe,
   Users, UserCheck, UserPlus, Loader2, Check, Trash2, Plus,
-  Lock, Link, ExternalLink
+  Lock, Link, ExternalLink, QrCode, Download
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { FormConfigSettings, GoogleFormInfo, FormPermission } from '../types';
 import { getFormPermissions, addFormPermission, deleteFormPermission, updateFormGeneralAccess } from '../lib/googleApi';
 
@@ -49,6 +50,41 @@ export default function FormSettingsModal({ isOpen, onClose, form, onSave, onTog
   const [generalRespondentRole, setGeneralRespondentRole] = useState<'restricted' | 'reader'>('restricted');
   const [isUpdatingGeneralAccess, setIsUpdatingGeneralAccess] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (form.responderUri) {
+      QRCode.toDataURL(form.responderUri, {
+        width: 300,
+        margin: 1.5,
+        color: {
+          dark: '#0f172a', // slate-900
+          light: '#ffffff'
+        }
+      })
+      .then(url => {
+        setQrCodeDataUrl(url);
+      })
+      .catch(err => {
+        console.error('Lỗi khi tạo mã QR:', err);
+      });
+    } else {
+      setQrCodeDataUrl('');
+    }
+  }, [form.responderUri]);
+
+  const downloadQrCode = () => {
+    if (!qrCodeDataUrl) return;
+    const link = document.createElement('a');
+    link.href = qrCodeDataUrl;
+    const safeTitle = form.title
+      .toLowerCase()
+      .replace(/[^a-z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ\s]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 40);
+    link.download = `ma-qr-${safeTitle || 'bieu-mau'}.png`;
+    link.click();
+  };
 
   const handleToggleGeneralAccess = async (target: 'editor' | 'respondent', status: 'restricted' | 'active') => {
     if (!token || !form.id || isUpdatingGeneralAccess) return;
@@ -560,6 +596,52 @@ export default function FormSettingsModal({ isOpen, onClose, form, onSave, onTog
                     </a>
                   )}
                 </div>
+
+                {/* QR Code Section */}
+                {form.responderUri && (
+                  <div className="bg-white border border-slate-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 mt-1 shadow-2xs">
+                    <div className="flex items-start space-x-3 text-left flex-1 min-w-0">
+                      <div className="p-2 bg-teal-50 text-teal-600 border border-teal-150 rounded-xl shrink-0 mt-0.5">
+                        <QrCode className="h-4.5 w-4.5" />
+                      </div>
+                      <div className="space-y-1 font-sans">
+                        <h5 className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider">
+                          Mã QR Người trả lời
+                        </h5>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Hãy in hoặc tải mã QR này về máy. Người dùng hoặc bệnh nhân chỉ cần quét trực tiếp bằng camera điện thoại để thực hiện điền phiếu nhanh chóng.
+                        </p>
+                        
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            disabled={!qrCodeDataUrl}
+                            onClick={downloadQrCode}
+                            className="inline-flex items-center space-x-1.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold font-sans text-[10px] uppercase px-3.5 py-1.5 rounded-xl transition-all cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                          >
+                            <Download className="h-3 w-3" />
+                            <span>Tải xuống mã QR</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {qrCodeDataUrl ? (
+                      <div className="shrink-0 p-1 bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner flex flex-col items-center justify-center">
+                        <img 
+                          src={qrCodeDataUrl} 
+                          alt="QR Code" 
+                          referrerPolicy="no-referrer"
+                          className="h-24 w-24 object-contain rounded-lg"
+                        />
+                      </div>
+                    ) : (
+                      <div className="shrink-0 h-24 w-24 bg-slate-100 rounded-xl flex items-center justify-center text-[9px] text-slate-400 select-none border border-dashed border-slate-300">
+                        Đang tạo QR...
+                      </div>
+                    )}
+                  </div>
+                )}
 
               </div>
             </div>
