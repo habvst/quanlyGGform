@@ -1309,13 +1309,21 @@ export default function App() {
           </button>
 
           {authErrorMessage && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-left space-y-2 mt-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-left space-y-4 mt-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="flex items-start space-x-2">
-                <AlertCircle className="h-4 w-4 text-red-650 shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-red-650 shrink-0 mt-0.5 animate-pulse" />
                 <div className="space-y-1 min-w-0 flex-1">
-                  <h4 className="text-xs font-bold text-red-800">Cơ chế xác thực chưa được cấp phép (GCP)</h4>
-                  <p className="text-red-700 text-[10.5px] font-medium leading-relaxed">
-                    {authErrorMessage.includes('GOOGLE_API_DISABLED') ? (
+                  <h4 className="text-sm font-bold text-red-800">Cơ chế xác thực chưa được cấp phép (GCP)</h4>
+                  <p className="text-red-700 text-[11px] font-medium leading-relaxed">
+                    {authErrorMessage.includes('unauthorized-domain') ? (
+                      <>
+                        Tên miền hiện tại chưa được cấp quyền đăng nhập OAuth trên hệ thống Firebase. Việc này nhằm mục đích bảo mật dữ liệu khách hàng.
+                      </>
+                    ) : authErrorMessage.includes('popup-closed-by-user') ? (
+                      <>
+                        Cơ chế Popup đăng nhập Google bị chặn hoặc bị đóng trước khi hoàn tất xác thực từ xa.
+                      </>
+                    ) : authErrorMessage.includes('GOOGLE_API_DISABLED') ? (
                       <>
                         Yêu cầu truy cập Google Drive API bị từ chối do bạn chưa kích hoạt các API nền tảng trên Google Cloud Console của dự án <strong>quanly-ggform</strong>.
                       </>
@@ -1325,6 +1333,68 @@ export default function App() {
                   </p>
                 </div>
               </div>
+
+              {/* DETAILED GUIDE FOR UNAUTHORIZED DOMAIN */}
+              {(authErrorMessage.includes('unauthorized-domain') || authErrorMessage.includes('unauthorized')) && (
+                <div className="border-t border-red-200/50 pt-3 text-[11px] space-y-3 text-slate-700 font-sans leading-normal">
+                  <p className="font-bold text-red-900 text-xs">🛠️ Cách cấp quyền cho tên miền này cực nhanh (chỉ cần làm 1 lần):</p>
+                  <p className="leading-relaxed">
+                    Để cho phép đăng nhập qua Firebase trên miền này, vui lòng truy cập Trang quản trị Firebase của bạn và thêm tên miền hiện tại vào danh sách ủy quyền:
+                  </p>
+
+                  <div className="bg-white border border-red-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Tên miền cần thêm:</span>
+                      <code className="text-xs font-mono font-bold text-indigo-700 select-all bg-indigo-50/50 px-1.5 py-0.5 rounded sm:block mt-1">
+                        {typeof window !== 'undefined' ? window.location.hostname : 'quanly-g-gform.vercel.app'}
+                      </code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          navigator.clipboard.writeText(window.location.hostname);
+                          alert('Đã copy tên miền: ' + window.location.hostname);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold self-start sm:self-center transition-all cursor-pointer shadow-sm hover:scale-102"
+                    >
+                      Copy tên miền
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-[10.5px] leading-relaxed pl-1">
+                    <div className="flex items-start gap-1">
+                      <span className="font-bold shrink-0 text-red-800">Bước 1:</span>
+                      <span>Bấm vào link: <a href="https://console.firebase.google.com/project/quanly-ggform/authentication/settings" target="_blank" rel="noreferrer noopener" className="underline font-bold text-indigo-600 hover:text-indigo-800">Mở Cài đặt Authentication của Firebase</a>.</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="font-bold shrink-0 text-red-800">Bước 2:</span>
+                      <span>Ở menu trên cùng chọn tab <strong className="text-slate-900">"Settings"</strong> (Cài đặt) ➔ bên trái chọn mục <strong className="text-slate-900">"Authorized domains"</strong> (Miền được ủy quyền).</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="font-bold shrink-0 text-red-800">Bước 3:</span>
+                      <span>Bấm nút <strong className="text-indigo-700 font-bold">"Add domain"</strong> (Thêm miền), dán tên miền vừa copy ở trên vào và bấm <strong className="font-bold">Add</strong>.</span>
+                    </div>
+                    <div className="flex items-start gap-1">
+                      <span className="font-bold shrink-0 text-red-800">Bước 4:</span>
+                      <span>Quay lại đây, tải lại trang web (F5) và bấm nút đăng nhập lại.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* DETAILED GUIDE FOR POPUP CLOSED BY USER */}
+              {(authErrorMessage.includes('popup-closed-by-user') || authErrorMessage.includes('closed-by-user')) && (
+                <div className="border-t border-red-200/50 pt-3 text-[11px] space-y-2.5 text-slate-700 font-sans leading-normal">
+                  <p className="font-bold text-red-900 text-xs">🎯 Hướng dẫn mở khóa trình duyệt:</p>
+                  <div className="space-y-1.5 text-[10.5px] leading-relaxed pl-1 pl-4 list-disc">
+                    <div>Hãy nhấp nút Đăng nhập lại, cố gắng giữ cửa sổ Popup xuất hiện cho tới khi chọn xong tài khoản Google của bạn.</div>
+                    <div>Nếu bạn đang sử dụng điện thoại hoặc Safari, vui lòng kiểm tra xem trình duyệt có đang <strong className="text-amber-750 font-semibold">chặn cửa sổ bật lên (Block Popups)</strong> không. Hãy chọn cho phép bật lên với trang này.</div>
+                    <div>Bạn cũng có thể mở trực tiếp ứng dụng bằng các trình duyệt tiêu chuẩn khác như <strong className="font-semibold text-slate-800">Google Chrome</strong> hoặc <strong className="font-semibold text-slate-800">Microsoft Edge</strong> để được tương thích popup hoàn hảo nhất.</div>
+                  </div>
+                </div>
+              )}
 
               {authErrorMessage.includes('GOOGLE_API_DISABLED') && (
                 <div className="border-t border-red-100 pt-2 text-[10px] space-y-2 text-slate-600 font-sans leading-normal pl-6">
