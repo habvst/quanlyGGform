@@ -30,85 +30,58 @@ async function startServer() {
         return res.status(400).json({ error: "Thiếu văn bản đầu vào" });
       }
 
-      const prompt = `Bạn là một chuyên gia phân tách tài liệu hành chính, bộ khảo sát, và đề thi trắc nghiệm siêu thông minh.
-Nhiệm vụ của bạn là bóc tách đoạn văn bản đề thi/khảo sát thô sau đây thành một cấu trúc Biểu mẫu (Google Form) hoàn hảo bao gồm: Tiêu đề biểu mẫu, Mô tả chi tiết, và Danh sách các câu hỏi hoàn chỉnh.
-
-QUY TẮC PHÂN LOẠI CÂU HỎI (type):
-- TEXT: Trả lời ngắn thông thường (ví dụ: Họ và tên, Mã nhân viên, Lớp, Email, Số điện thoại, câu trả lời cực ngắn dưới 20 từ).
-- PARAGRAPH: Ý kiến đóng góp, nhận xét chi tiết, câu trả lời tự luận dài, mô tả dài.
-- MULTIPLE_CHOICE: Câu hỏi trắc nghiệm một đáp án chọn duy nhất (ví dụ các phương án A, B, C, D...). Đây là mặc định cho các câu hỏi trắc nghiệm.
-- CHECKBOX: Câu hỏi hộp kiểm cho phép chọn nhiều đáp án cùng lúc.
-- DROP_DOWN: Câu hỏi có danh sách thả xuống chọn một đáp án duy nhất (phù hợp cho câu hỏi có nhiều lựa chọn cố định như Tỉnh/Thành phố, Phòng ban).
-
-QUY TẮC BÓC TÁCH VÀ NHẬN DIỆN THÔNG MINH (Cực kỳ quan trọng để đạt độ chính xác 100%):
-1. LỌC SẠCH TIÊU ĐỀ & MÔ TẢ:
-   - Hãy tìm ra tiêu đề lớn của cuộc khảo sát hoặc đề kiểm tra ở phần trên cùng của văn bản (ví dụ: "ĐỀ KIỂM TRA GIỮA KÌ I MÔN TOÁN 10", "KHẢO SÁT CHẤT LƯỢNG DỊCH VỤ..."). Đưa thông tin này vào trường "title".
-   - Các thông tin hành chính, giới thiệu, hướng dẫn làm bài, hoặc thời gian làm bài nên được gom lại một cách đẹp đẽ ở trường "description".
-   - Bỏ qua các dòng vô nghĩa, dòng hướng dẫn điền tên hoặc thông tin học sinh nếu bạn đã bóc tách chúng thành các câu hỏi TEXT riêng (ví dụ: Họ tên, Lớp học).
-
-2. NHẬN DIỆN CÂU HỎI VÀ LÀM SẠCH:
-   - Nhận diện các câu hỏi dựa theo mọi ký hiệu đầu dòng tiếng Việt: "Câu 1. ", "Câu 2:", "CÂU 3 - ", "Question 4: ", "Q5: ", "1/ ", "2) ", "1.1 ", "1.1. "...
-   - Hãy loại bỏ các ký hiệu tiền tố này ra đầu câu hỏi để tiêu đề câu hỏi được văn minh, sạch đẹp nhất (ví dụ: "Câu 1: Thủ đô của Việt Nam là gì?" sẽ chuyển thành "Thủ đô của Việt Nam là gì?").
-
-3. NHẬN DIỆN CÁC PHƯƠNG ÁN LỰA CHỌN (OPTIONS):
-   - ĐỐI VỚI PHƯƠNG ÁN CÙNG MỘT DÒNG (Inline options): Đề thi thường ghi các đáp án nối tiếp nhau trên cùng một hàng để tiết kiệm giấy, ví dụ: "A. Hà Nội   B. Hải Phòng   C. Đà Nẵng   D. TP. HCM". Bạn PHẢI tự động tách chúng thành 4 phương án riêng biệt:
-     - Lựa chọn 1: "Hà Nội"
-     - Lựa chọn 2: "Hải Phòng"
-     - Lựa chọn 3: "Đà Nẵng"
-     - Lựa chọn 4: "TP. HCM"
-   - Loại bỏ hoàn toàn các ký tự nhãn dán như "A. ", "B. ", "C. ", "D. ", "a) ", "b) ", "o ", "- ", "[A]. " ở đầu mỗi phương án để nội dung phương án được sạch đẹp nhất.
-
-4. PHÁT HIỆN ĐÁP ÁN ĐÚNG (correctAnswer):
-   - Quét kỹ từng câu hỏi xem có phương án nào có các dấu hiệu đặc biệt chứng tỏ đó là đáp án đúng không:
-     - Có dấu sao ở trước hoặc sau đáp án: "*Hà Nội" hoặc "Hà Nội*"
-     - Được in đậm hoặc gạch chân trong tài liệu thô.
-     - Phía sau câu hỏi hoặc đáp án có chú thích: "(Đáp án đúng: A)", "(Đáp án: B)", "(-> C)", "[x]", "[valid]",...
-   - QUÉT BẢNG ĐÁP ÁN CUỐI VĂN BẢN (Answer key list): Rất nhiều đề thi có một bảng đáp án hoặc danh sách đáp án nằm ở cuối tài liệu (ví dụ: "Dưới đây là đáp án:", "BẢNG ĐÁP ÁN: 1.A, 2.B, 3.C, 4.D...", "1-A, 2-B, 3-C"). Bạn hãy phân tích bảng này để map ngược lại đáp án đúng khớp với nội dung đầy đủ của phương án cho từng câu hỏi tương ứng!
-   - Giá trị "correctAnswer" phải là nội dung chuỗi đầy đủ và khớp chính xác tuyệt đối với nội dung của phương án đúng đó (hoặc khớp với một trong các chuỗi sạch trong mảng options vừa được bóc tách).
-
-5. PHÁT HIỆN ĐIỂM SỐ (points) VÀ TÙY CHỌN BẮT BUỘC (required):
-   - Nếu trong câu hỏi có ghi điểm, ví dụ: "(1đ)", "(1.5 điểm)", "[2 points]", "[3đ]"... hãy bóc tách điểm số đó và lưu dưới dạng số (lấy số nguyên hoặc làm tròn, ví dụ 1.5 hoặc 2 thì ghi là 2). Nếu không thấy ghi điểm, đặt mặc định là 1 điểm cho đề thi/khảo sát.
-   - Các câu hỏi thông tin bắt buộc (nhập tên, mã số, hoặc các câu hỏi khảo sát thông thường) hãy đặt "required" là true.
-
-Hãy trả về kết quả dưới dạng JSON hoàn hảo khớp tuyệt đối với cấu trúc Schema sau:
-{
-  "title": "Tiêu đề biểu mẫu",
-  "description": "Mô tả biểu mẫu",
-  "questions": [
-    {
-      "title": "Nội dung câu hỏi sạch đẹp",
-      "type": "TEXT" | "PARAGRAPH" | "MULTIPLE_CHOICE" | "CHECKBOX" | "DROP_DOWN",
-      "options": ["Phương án 1 sạch sẽ", "Phương án 2 sạch sẽ"...],
-      "required": true,
-      "points": 1,
-      "correctAnswer": "Nội dung phương án đúng khớp chính xác nội dung trong mảng options"
-    }
-  ]
-}
-
-Nội dung văn bản thô cần bóc tách:
----
-${text}
----`;
-
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: prompt,
+        contents: `Sau đây là nội dung tài liệu thô (Word/văn bản thô) cần bóc tách. Hãy phân tích cấu trúc, tiêu đề, và tất cả danh sách câu hỏi:
+---
+${text}
+---`,
         config: {
+          systemInstruction: `Bạn là một chuyên gia cao cấp hàng đầu về kiến trúc dữ liệu và xử lý ngôn ngữ tự nhiên (NLP) tiếng Việt, chuyên bóc tách các tài liệu hành chính, y học lâm sàng, quy trình kỹ thuật bệnh viện, bảng khảo sát và đề thi trắc nghiệm.
+Nhiệm vụ của bạn là phân tích đoạn văn bản thô được cung cấp, nhận diện cấu trúc tệp để chuyển đổi thành biểu mẫu Google Form dưới dạng JSON hoàn chỉnh và sạch đẹp 100%.
+
+QUY TRÌNH PHÂN LOẠI CÁU TRÚC:
+1. TIÊU ĐỀ & MÔ TẢ (title & description):
+   - Xác định tiêu đề chính ở phần trên cùng của văn bản (Ví dụ: "QUY TRÌNH KỸ THUẬT CẤP CỨU NGỪNG HÔ HẤP - TUẦN HOÀN (HỒI SINH TIM PHỔI)", "KHẢO SÁT CHẤT LƯỢNG DỊCH VỤ..."). Lưu vào trường "title".
+   - Thu thập tất cả thông tin hành chính, mục đích khảo sát, hướng dẫn làm bài, thông tin ban hành, thời gian làm bài, ký hiệu văn bản ban ngành vào trường "description".
+   - Loại bỏ các dòng thông báo điền thông tin cá nhân chung nếu bạn đã chuyển chúng thành câu hỏi TEXT riêng (Ví dụ: Họ tên người làm, Số điện thoại...).
+
+2. NHẬN DIỆN CÂU HỎI & LOẠI BỎ SỐ THỨ TỰ THỪA:
+   - Nhận diện câu hỏi qua mọi ký hiệu tiền tố phổ biến: "Câu 1. ", "Câu 2:", "CÂU 3 - ", "Question 4: ", "Q5: ", "1/ ", "1.1. ", "a) "...
+   - Hãy LOẠI BỎ hoàn toàn các ký hiệu số thứ tự/ký tự đánh dấu đầu dòng này khỏi tiêu đề câu hỏi để nội dung câu hỏi được sạch sẽ, trực quan bậc nhất (Ví dụ: "Câu 1: Thời gian vàng cấp cứu ngừng thở là bao nhiêu?" chuyển thành "Thời gian vàng cấp cứu ngừng thở là bao nhiêu?").
+
+3. PHÂN LOẠI KIỂU CÂU HỎI (type):
+   - TEXT: Cho các câu hỏi nhập thông tin ngắn, dữ liệu cá nhân (ví dụ: "Họ và tên", "Đơn vị công tác", "Mã nhân viên", "Số điện thoại", "Mã số bệnh nhân").
+   - PARAGRAPH: Dành cho nhận xét, ý kiến đóng góp, tự luận dài, chẩn đoán chi tiết hoặc ghi chú lâm sàng.
+   - MULTIPLE_CHOICE: Khảo sát một lựa chọn hoặc câu hỏi trắc nghiệm gốc chỉ chọn 1 đáp án duy nhất (có các lựa chọn A, B, C, D...). Đây là kiểu mặc định cho mọi danh sách trắc nghiệm.
+   - CHECKBOX: Câu hỏi cho phép lựa chọn nhiều đáp án hoặc tích chọn bảng kiểm thực hiện kỹ thuật lâm sàng (ví dụ checklist "Có thực hiện", "Không thực hiện", "Đạt", "Không đạt" nhưng chọn nhiều).
+   - DROP_DOWN: Danh sách thả xuống chọn một phương án duy nhất (Ví dụ: "Chức vụ", "Học hàm học vị", "Tên Khoa/Phòng" nơi có danh sách dài danh mục cố định).
+
+4. BÓC TÁCH PHƯƠNG ÁN LỰA CHỌN (options):
+   - TÁCH ĐÁP ÁN TRÊN CÙNG MỘT DÒNG (Inline parsing): Rất nhiều tài liệu nén các lựa chọn trên 1 dòng để tiết kiệm không gian, ví dụ "A. 4 phút    B. 10 phút    C. 15 phút    D. 30 phút". Bạn PHẢI bóc tách thông minh thành 4 phần tử mảng độc lập: ["4 phút", "10 phút", "15 phút", "30 phút"].
+   - Làm sạch phương án: Bạn PHẢI LOẠI BỎ hoàn toàn các nhãn dán như "A. ", "B. ", "C- ", "D) ", "a. ", "b) ", "[A]. " ở đầu mỗi đáp án. Các phương án trong mảng "options" phải hoàn toàn sạch sẽ, không chứa ký hiệu nhãn.
+
+5. PHÁT HIỆN ĐÁP ÁN ĐÚNG (correctAnswer) & QUÉT BẢNG ĐÁP ÁN (Answer Key):
+   - Quét kỹ xem có bất kỳ phương án nào có dấu sao ở đầu/cuối: "*A. 4 phút" hoặc "4 phút*", in đậm, gạch chân đại diện cho đáp án đúng.
+   - Rất quan trọng: Nếu cuối văn bản có danh sách đáp án, ví dụ "BẢNG ĐÁP ÁN: 1.A, 2.D, 3.C..." hoặc "Đáp án: Câu 1 - A; Câu 2 - D", hãy tự khớp nhãn "A", "D" với nội dung đầy đủ của phương án của câu hỏi tương ứng và gán chính xác văn bản đó cho trường "correctAnswer" (correctAnswer bắt buộc phải là một chuỗi văn bản sạch, trùng khớp hoàn toàn với một trong các phần tử trong mảng options của câu hỏi đó).
+
+6. ĐIỂM SỐ (points) & BẮT BUỘC (required):
+   - Đọc các thông tin điểm số trong câu hỏi nếu có dạng "(1.5 điểm)", "(2đ)"... để gán vào trường points (chuyển về kiểu số nguyên). Nếu không đề xuất, hãy đặt mặc định 1 điểm cho các câu hỏi ôn tập/kiểm tra.
+   - Các câu hỏi cơ bản hoặc khảo sát đều nên đặt mặc định "required": true trừ phi có ghi chú khác.`,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             required: ["title", "description", "questions"],
             properties: {
               title: { type: Type.STRING, description: "Tiêu đề biểu mẫu" },
-              description: { type: Type.STRING, description: "Mô tả biểu mẫu" },
+              description: { type: Type.STRING, description: "Mô tả biểu mẫu chứa thông tin hành chính, hướng dẫn" },
               questions: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   required: ["title", "type", "required"],
                   properties: {
-                    title: { type: Type.STRING, description: "Nội dung câu hỏi" },
+                    title: { type: Type.STRING, description: "Nội dung tiêu đề câu hỏi thô sạch sẽ, không chứa tiền tố số thứ tự" },
                     type: { 
                       type: Type.STRING, 
                       description: "Kiểu câu hỏi", 
@@ -117,11 +90,11 @@ ${text}
                     options: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
-                      description: "Các phương án lựa chọn nếu có"
+                      description: "Các phương án lựa chọn đã được lọc bỏ nhãn danh mục (A, B, C...)"
                     },
                     required: { type: Type.BOOLEAN, description: "Bắt buộc trả lời" },
-                    points: { type: Type.INTEGER, description: "Số điểm mặc định cho câu này nếu là đề ôn tập" },
-                    correctAnswer: { type: Type.STRING, description: "Đáp án đúng của câu hỏi nếu được phát hiện" }
+                    points: { type: Type.INTEGER, description: "Số điểm mặc định cho câu hỏi" },
+                    correctAnswer: { type: Type.STRING, description: "Nội dung sạch của đáp án đúng, khớp chính xác 100% với một đáp án trong mảng options" }
                   }
                 }
               }

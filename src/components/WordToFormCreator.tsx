@@ -321,6 +321,61 @@ export function parseTextToQuestions(text: string): { title: string; description
   };
 }
 
+function matchCorrectAnswerToOptions(correctAnswer: string, options: string[]): string {
+  if (!correctAnswer || !options || options.length === 0) return '';
+  
+  const cleanAns = correctAnswer.trim().toLowerCase();
+  
+  // 1. Exact match or lowercased exact match
+  const exactMatch = options.find(opt => opt.trim() === correctAnswer.trim());
+  if (exactMatch) return exactMatch;
+  
+  const cleanOptions = options.map(opt => opt.trim().toLowerCase());
+  const lowerExactIndex = cleanOptions.indexOf(cleanAns);
+  if (lowerExactIndex !== -1) return options[lowerExactIndex];
+
+  // 2. Index match (e.g. correctAnswer is "A", "B", "C", "D" or "A.", "b)", etc.)
+  const singleLetterMatch = cleanAns.match(/^\s*([a-f])[\s\.:\)-]*$/i);
+  if (singleLetterMatch) {
+    const letter = singleLetterMatch[1];
+    const index = letter.charCodeAt(0) - 97; // 'a' code stands for 97
+    if (index >= 0 && index < options.length) {
+      return options[index];
+    }
+  }
+
+  // 3. Prefix stripping match: strip A., B), etc. from both correct answer and options
+  const stripPrefix = (str: string) => {
+    return str
+      .replace(/^\s*([a-f]|[0-9]+)\s*[\s\.:\)-]+\s*/i, '') // strip "A. ", "1) "
+      .replace(/^\s*[\*\+•\-]\s*/, '') // strip bullet styles
+      .trim()
+      .toLowerCase();
+  };
+
+  const cleanAnsStripped = stripPrefix(correctAnswer);
+  
+  for (let i = 0; i < options.length; i++) {
+    const optStripped = stripPrefix(options[i]);
+    if (optStripped === cleanAnsStripped && optStripped.length > 0) {
+      return options[i];
+    }
+  }
+
+  // 4. Content subset matching: if option contains correct answer or correct answer contains option
+  if (cleanAnsStripped.length >= 2) {
+    for (let i = 0; i < options.length; i++) {
+      const optStripped = stripPrefix(options[i]);
+      if (optStripped.includes(cleanAnsStripped) || cleanAnsStripped.includes(optStripped)) {
+        return options[i];
+      }
+    }
+  }
+
+  // Return original as last resort
+  return correctAnswer;
+}
+
 export default function WordToFormCreator({
   token,
   folderId,
@@ -407,15 +462,18 @@ export default function WordToFormCreator({
       setParsedTitle(data.title || 'Biểu mẫu tự động mới');
       setParsedDesc(data.description || 'Được bóc tách tự động bởi thông minh nhân tạo AI');
       
-      const parsedQuestions: ParsedQuestion[] = (data.questions || []).map((q: any) => ({
-        id: q.id || 'q_' + Math.random().toString(36).substring(2, 11),
-        title: q.title || 'Câu hỏi thô',
-        type: q.type || 'TEXT',
-        options: q.options || [],
-        required: q.required !== undefined ? q.required : true,
-        points: q.points !== undefined ? Number(q.points) : 1,
-        correctAnswer: q.correctAnswer || ''
-      }));
+      const parsedQuestions: ParsedQuestion[] = (data.questions || []).map((q: any) => {
+        const cleanedOpts = q.options || [];
+        return {
+          id: q.id || 'q_' + Math.random().toString(36).substring(2, 11),
+          title: q.title || 'Câu hỏi thô',
+          type: q.type || 'TEXT',
+          options: cleanedOpts,
+          required: q.required !== undefined ? q.required : true,
+          points: q.points !== undefined ? Number(q.points) : 1,
+          correctAnswer: q.correctAnswer ? matchCorrectAnswerToOptions(q.correctAnswer, cleanedOpts) : ''
+        };
+      });
       setQuestions(parsedQuestions);
 
       // Auto trigger Quiz Mode if of any parsed questions contain pre-filled points/answers
@@ -431,7 +489,11 @@ export default function WordToFormCreator({
       setParsedTitle(parsed.title);
       setParsedDesc(parsed.description);
       
-      const mappedQuestions = parsed.questions.map(q => ({ ...q, points: 1, correctAnswer: q.correctAnswer || '' }));
+      const mappedQuestions = parsed.questions.map(q => ({
+        ...q,
+        points: 1,
+        correctAnswer: q.correctAnswer ? matchCorrectAnswerToOptions(q.correctAnswer, q.options) : ''
+      }));
       setQuestions(mappedQuestions);
       
       const hasPreScore = mappedQuestions.some(q => q.correctAnswer);
@@ -483,7 +545,11 @@ export default function WordToFormCreator({
         setParsedTitle(parsed.title);
         setParsedDesc(parsed.description);
         
-        const mappedQuestions = parsed.questions.map(q => ({ ...q, points: 1, correctAnswer: q.correctAnswer || '' }));
+        const mappedQuestions = parsed.questions.map(q => ({
+          ...q,
+          points: 1,
+          correctAnswer: q.correctAnswer ? matchCorrectAnswerToOptions(q.correctAnswer, q.options) : ''
+        }));
         setQuestions(mappedQuestions);
         
         const hasPreScore = mappedQuestions.some(q => q.correctAnswer);
@@ -541,7 +607,11 @@ export default function WordToFormCreator({
         setParsedTitle(parsed.title);
         setParsedDesc(parsed.description);
         
-        const mappedQuestions = parsed.questions.map(q => ({ ...q, points: 1, correctAnswer: q.correctAnswer || '' }));
+        const mappedQuestions = parsed.questions.map(q => ({
+          ...q,
+          points: 1,
+          correctAnswer: q.correctAnswer ? matchCorrectAnswerToOptions(q.correctAnswer, q.options) : ''
+        }));
         setQuestions(mappedQuestions);
         
         const hasPreScore = mappedQuestions.some(q => q.correctAnswer);
